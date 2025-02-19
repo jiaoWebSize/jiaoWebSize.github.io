@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>单词消消乐 - 配对游戏</title>
+    <style>
+        /* 页面居中样式 */
+        #app {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* justify-content: center; */
+            min-height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f9f9f9;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        /* 瀑布流布局样式 */
+        .container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            width: 90%;
+            max-width: 1200px;
+        }
+
+        .column {
+            width:50%;
+            display: flex;
+            /* flex-direction: column; */
+            flex-wrap: wrap;
+            align-content: flex-start;
+            max-height: 600px;
+            font-size: 24px;
+        }
+
+        .word-item {
+            padding: 12px;
+            margin: 8px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-block;
+            white-space: nowrap;
+            box-sizing: border-box;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+        }
+
+        /* 英文单词背景色 */
+        .word-item[data-type="en"] {
+            background-color: #a0d8ef; /* 浅蓝色 */
+        }
+
+        /* 中文单词背景色 */
+        .word-item[data-type="zh"] {
+            background-color: #90ee90; /* 浅绿色 */
+        }
+
+        .word-item:hover {
+            opacity: 0.8;
+        }
+        .column .selected {
+            transform: scale(1.05);
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+            background-color: #ffcccb; /* 添加显眼的背景色 */
+        }
+
+        /* 消失动画 */
+        @keyframes fadeOut {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0); }
+        }
+
+        .fade-out {
+            animation: fadeOut 0.5s forwards;
+        }
+
+        /* 响应式布局 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .column {
+                width: 100%;
+                max-height: none;
+            }
+        }
+
+        #message {
+            text-align: center;
+            font-size: 24px;
+            color: #4CAF50;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <h2>单词消消乐 - 配对游戏</h2>
+        <div class="container">
+            <div class="column" id="english-column"></div>
+            <div class="column" id="chinese-column"></div>
+        </div>
+        <div id="message"></div>
+    </div>
+
+    <!-- 音频元素 -->
+    <audio id="successSound" src="https://img.tukuppt.com/newpreview_music/01/66/41/63c0e76601774734.mp3"></audio>
+    <audio id="errorSound" src="https://img.tukuppt.com/newpreview_music/08/99/11/5c88e18c8ae7a79551.mp3"></audio>
+    <audio id="winSound" src="https://img.tukuppt.com/newpreview_music/09/00/29/5c8915171b81482702.mp3"></audio>    
+    <audio id="wordSound" src=""></audio> 
+
+    <script>
+        // 单词数据集
+        const wordPairs = [
+            { en: "sing", zh: "唱歌" },
+            { en: "read", zh: "阅读" },
+            { en: "paint", zh: "用颜料画" },
+            { en: "dance", zh: "跳舞" },
+            { en: "swim", zh: "游泳" },
+            { en: "hobby", zh: "业余爱好" },
+            { en: "our", zh: "我们的" },
+            { en: "us", zh: "我们（宾）" },
+            { en: "Ms", zh: "女士" },
+            { en: "favourite", zh: "最喜欢的" },
+            { en: "free", zh: "空闲的" },
+            { en: "centre", zh: "中心" },
+            { en: "sports", zh: "体育运动" },
+            { en: "talk", zh: "讨论，谈论" },
+            { en: "do", zh: "做，干，办" },
+            { en: "warm", zh: "温暖的" },
+            { en: "sleep", zh: "睡觉" },
+            { en: "next", zh: "接下来的" },
+            { en: "work", zh: "工作" },
+            { en: "play", zh: "玩" },
+            { en: "play basketball", zh: "打篮球" },
+            { en: "play ping-pong", zh: "打乒乓球" },
+            { en: "play football", zh: "踢足球" },
+            { en: "read a book", zh: "读一本书" },
+            { en: "sing a song", zh: "唱一首歌" },
+            { en: "basketball court", zh: "篮球场" },
+            { en: "next year", zh: "明年" },
+            { en: "have work to do", zh: "有活儿要干" },
+            { en: "free time", zh: "空闲时间" },
+            { en: "be good at", zh: "擅长于" }
+        ];
+
+        let selectedWord = null;
+        let remainingPairs = wordPairs.length;
+
+        // 初始化游戏
+        function initGame() {
+            const chineseItems = shuffle([...wordPairs.map(p => p.zh)]);
+            
+            // 创建英文列
+            const enColumn = document.getElementById('english-column');
+            wordPairs.forEach((pair, index) => {
+                const div = createWordItem(pair.en, index, 'en');
+                enColumn.appendChild(div);
+            });
+
+            // 创建中文列（乱序）
+            const cnColumn = document.getElementById('chinese-column');
+            chineseItems.forEach((zh, index) => {
+                const div = createWordItem(zh, index, 'zh');
+                cnColumn.appendChild(div);
+            });
+        }
+
+        // 创建单词元素
+        function createWordItem(text, index, type) {
+            const div = document.createElement('div');
+            div.className = 'word-item';
+            div.dataset.index = index;
+            div.dataset.type = type;
+            div.dataset.value = text;
+            div.textContent = text;
+            div.addEventListener('click', handleClick);
+            return div;
+        }
+
+        // 处理点击事件
+        function handleClick() {
+            if (this.classList.contains('fade-out')) return;
+
+            this.classList.toggle('selected');
+            const currentType = this.dataset.type;
+            const currentValue = this.dataset.value;
+
+            if (!selectedWord) {
+                selectedWord = this;
+            } else {
+                if (currentType === selectedWord.dataset.type) {
+                    selectedWord.classList.remove('selected');
+                    selectedWord = this;
+                } else {
+                    setTimeout(() => {
+                        checkMatch(selectedWord, this);
+                        selectedWord = null;
+                    }, 500);
+                }
+            }
+                // 播放单词音频
+                if (currentType === 'en') {
+                    const audio = document.getElementById('wordSound');
+                    audio.src = `https://sensearch.baidu.com/gettts?lan=uk&spd=3&source=alading&text=${ this.dataset.value}`;
+                    audio.currentTime = 0;
+                    audio.play();
+                }
+        }
+
+        // 验证配对
+        function checkMatch(enElement, zhElement) {
+            const enWord = wordPairs.find(p => p.en === enElement.dataset.value);
+            const zhWord = wordPairs.find(p => p.zh === zhElement.dataset.value);
+            enElement.classList.remove('selected');
+            zhElement.classList.remove('selected');
+            if (enWord && enWord.zh === zhElement.dataset.value||zhWord && zhWord.zh === enElement.dataset.value) {
+                // 播放成功音效
+                const audio = document.getElementById('successSound');
+                audio.currentTime = 0;
+                audio.play();
+
+                // 添加消失动画
+                enElement.classList.add('fade-out');
+                zhElement.classList.add('fade-out');
+
+                // 动画结束后移除元素
+                setTimeout(() => {
+                    enElement.remove();
+                    zhElement.remove();
+                }, 500);
+
+                remainingPairs--;
+                
+                if (remainingPairs === 0) {
+                    document.getElementById('message').textContent = "🎉 恭喜！全部配对成功！";                    
+                    // 播放通关音效
+                    const audio = document.getElementById('winSound');
+                    audio.currentTime = 0;
+                    audio.play();
+                    
+                }
+            } else {
+                // 错误配对提示   
+                const audio = document.getElementById('errorSound');
+                audio.currentTime = 0;
+                audio.play();
+                // 播放音效                  
+                enElement.style.animation = 'shake 0.5s';
+                zhElement.style.animation = 'shake 0.5s';
+                setTimeout(() => {
+                    enElement.style.animation = '';
+                    zhElement.style.animation = '';
+                }, 500);
+            }
+        }
+
+        // 洗牌函数
+        function shuffle(array) {
+            return array.sort(() => Math.random() - 0.5);
+        }
+
+        // 初始化游戏
+        initGame();
+    </script>
+</body>
+</html>
